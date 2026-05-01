@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phone Tracker</title>
+  <link rel="stylesheet" href="css/style.css">
+
+  <!-- LEAFLET: mapa real -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+   
+    <!--========BARRA SUPERIOR======-->
+    <header class="navbar">
+        <div class="navbar-brand">
+            <span>Phone-</span>Tracker
+        </div>
+        <div class="navbar-status">
+            <span class="live-dot"></span>
+            EN VIVO
+        </div>
+        <div class="navbar-time" id="reloj">00:00:00</div>
+    </header>
+
+    <!--=========CONTENIDO PRINCIPAL=========-->
+    <div class="app-container">
+
+        <!--=====PANEL IZQUIERDO: lista de dispositivos=====-->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>Dispositivos</h2>
+                <input
+                  type="text"
+                  id="buscador"
+                  placeholder="Buscar dispositivo..." 
+                  class="input-buscar"
+                >
+            </div>
+
+            <!--Lista de dispositivos(se llena con JS)-->
+            <ul class="device-list" id="listaDispositivos">
+            </ul>
+
+            <!--Estadisticas-->
+            <div class="sidebar-footer">
+                <div class="stat-box">
+                    <span class="stat-num" id="totalDispositivos">0</span>
+                    <span class="stat-lbl">Total</span> 
+                </div>
+                <div class="stat-box">
+          <span class="stat-num verde" id="dispositivosOnline">0</span>
+          <span class="stat-lbl">Activos</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-num rojo" id="dispositivosOffline">0</span>
+          <span class="stat-lbl">Offline</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- PANEL CENTRAL: mapa -->
+  <main class="map-container">
+
+    <!-- Mapa real de Leaflet -->
+    <div id="mapa"></div>
+
+    <!-- Panel info del dispositivo seleccionado -->
+    <div class="info-panel" id="infoPanel">
+      <h3 id="info-nombre">Seleccioná un dispositivo</h3>
+      <p id="info-rol"></p>
+      <div class="info-row"><span>Latitud</span>  <strong id="info-lat">--</strong></div>
+      <div class="info-row"><span>Longitud</span> <strong id="info-lng">--</strong></div>
+      <div class="info-row"><span>Velocidad</span><strong id="info-vel">--</strong></div>
+      <div class="info-row"><span>Batería</span>  <strong id="info-bat">--</strong></div>
+      <div class="info-row"><span>Estado</span>   <strong id="info-estado">--</strong></div>
+    </div>
+
+    <!-- Historial de movimientos -->
+    <div class="historial-panel" id="historialPanel">
+      <h4>📍 Historial de movimientos</h4>
+      <div id="historialLista"></div>
+    </div>
+
+    <!-- Botón para agregar dispositivo -->
+    <button class="btn-agregar" id="btnAgregar">+ Agregar dispositivo</button>
+
+    <!-- Formulario agregar dispositivo -->
+    <div class="modal" id="modal" style="display:none">
+      <div class="modal-box">
+        <h3>📱 Nuevo Dispositivo</h3>
+        <input type="text"   id="form-nombre" placeholder="Nombre (ej: Juan Pérez)" class="form-input">
+        <input type="text"   id="form-rol"    placeholder="Rol (ej: Empleado, Chofer)" class="form-input">
+        <input type="number" id="form-lat"    placeholder="Latitud (ej: 19.432)" class="form-input">
+        <input type="number" id="form-lng"    placeholder="Longitud (ej: -99.133)" class="form-input">
+        <select id="form-estado" class="form-input">
+          <option value="online">Online</option>
+          <option value="away">Inactivo</option>
+          <option value="offline">Offline</option>
+        </select>
+        <div class="modal-btns">
+          <button id="btnGuardar" class="btn-guardar">✅ Guardar</button>
+          <button id="btnCancelar" class="btn-cancelar">✖ Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  </div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/Device.js"></script>
+  <script src="js/MapRenderer.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
+    
