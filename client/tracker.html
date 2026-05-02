@@ -6,19 +6,16 @@
   <title>Mi Ubicación</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
       background: #070b14;
       color: #c8d8f0;
       font-family: 'Courier New', monospace;
       min-height: 100vh;
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
       padding: 24px;
     }
-
     .card {
       background: #0d1526;
       border: 1px solid #1a2a45;
@@ -28,21 +25,9 @@
       max-width: 360px;
       text-align: center;
     }
-
     .emoji { font-size: 3rem; margin-bottom: 12px; }
-
-    h1 {
-      font-size: 1.1rem;
-      color: white;
-      margin-bottom: 6px;
-    }
-
-    .subtitulo {
-      font-size: 0.72rem;
-      color: #4a6080;
-      margin-bottom: 24px;
-    }
-
+    h1 { font-size: 1.1rem; color: white; margin-bottom: 6px; }
+    .subtitulo { font-size: 0.72rem; color: #4a6080; margin-bottom: 24px; }
     .input {
       width: 100%;
       background: #070b14;
@@ -57,7 +42,6 @@
       text-align: center;
     }
     .input:focus { border-color: #00e5ff; }
-
     .btn {
       width: 100%;
       padding: 14px;
@@ -67,33 +51,13 @@
       font-size: 0.9rem;
       font-weight: bold;
       cursor: pointer;
-      transition: all 0.2s;
       margin-bottom: 10px;
     }
-
-    .btn-iniciar {
-      background: #00e5ff;
-      color: #000;
-    }
-    .btn-iniciar:hover { background: #00b8cc; }
-
-    .btn-detener {
-      background: transparent;
-      color: #ff4d6d;
-      border: 1px solid #ff4d6d;
-      display: none;
-    }
-
-    .estado {
-      margin-top: 16px;
-      font-size: 0.72rem;
-      color: #4a6080;
-      min-height: 40px;
-    }
-
+    .btn-iniciar { background: #00e5ff; color: #000; }
+    .btn-detener { background: transparent; color: #ff4d6d; border: 1px solid #ff4d6d; display: none; }
+    .estado { margin-top: 16px; font-size: 0.72rem; color: #4a6080; min-height: 40px; }
     .estado.activo { color: #7cff6b; }
     .estado.error  { color: #ff4d6d; }
-
     .pulso {
       display: inline-block;
       width: 10px; height: 10px;
@@ -102,301 +66,139 @@
       margin-right: 6px;
       animation: pulsar 1.2s infinite;
     }
-
     @keyframes pulsar {
       0%,100% { opacity: 1; transform: scale(1); }
       50%      { opacity: 0.3; transform: scale(0.6); }
     }
-
-    .coords {
-      margin-top: 12px;
-      font-size: 0.65rem;
-      color: #4a6080;
-    }
+    .coords { margin-top: 12px; font-size: 0.65rem; color: #4a6080; }
     .coords span { color: #00e5ff; }
   </style>
 </head>
 <body>
-
   <div class="card">
     <div class="emoji">📍</div>
     <h1>Tracker de Empleado</h1>
     <p class="subtitulo">Tu ubicación se enviará al mapa en tiempo real</p>
-
-    <input
-      type="text"
-      id="inputNombre"
-      class="input"
-      placeholder="Tu nombre"
-      maxlength="30"
-    >
-
-    <button class="btn btn-iniciar" id="btnIniciar">
-      📡 Iniciar rastreo
-    </button>
-
-    <button class="btn btn-detener" id="btnDetener">
-      ⏹ Detener rastreo
-    </button>
-
-    <div class="estado" id="estado">
-      Ingresá tu nombre y presioná iniciar
-    </div>
-
+    <input type="text" id="inputNombre" class="input" placeholder="Tu nombre" maxlength="30">
+    <button class="btn btn-iniciar" id="btnIniciar">📡 Iniciar rastreo</button>
+    <button class="btn btn-detener" id="btnDetener">⏹ Detener rastreo</button>
+    <div class="estado" id="estado">Ingresá tu nombre y presioná iniciar</div>
     <div class="coords" id="coords"></div>
   </div>
 
-  <!-- Socket.io se carga automáticamente desde el servidor -->
-      // ════════════════════════════════════════════
-  //  TRACKER — Con soporte de segundo plano
-  // ════════════════════════════════════════════
-
   <script src="/socket.io/socket.io.js"></script>
   <script>
-  const socket = io();
-  let intervalGPS = null;
+    const socket     = io({ reconnection: true });
+    const params     = new URLSearchParams(window.location.search);
+    const trabajadorId = params.get('id');
+    const nombreParam  = params.get('nombre');
 
-  // Leemos los parámetros de la URL
-  const params       = new URLSearchParams(window.location.search);
-  const trabajadorId = params.get('id');
-  const nombreParam  = params.get('nombre');
+    const btnIniciar  = document.getElementById('btnIniciar');
+    const btnDetener  = document.getElementById('btnDetener');
+    const estadoEl    = document.getElementById('estado');
+    const coordsEl    = document.getElementById('coords');
+    const inputNombre = document.getElementById('inputNombre');
 
-  // Si viene el nombre en la URL lo ponemos automáticamente
-  if (nombreParam) {
-    document.getElementById('inputNombre').value = decodeURIComponent(nombreParam);
-    document.getElementById('inputNombre').disabled = true;
-  }
+    let intervalGPS = null;
+    let wakeLock    = null;
+    let rastreando  = false;
 
-  const btnIniciar  = document.getElementById('btnIniciar');
-  const btnDetener  = document.getElementById('btnDetener');
-  const estado      = document.getElementById('estado');
-  const coords      = document.getElementById('coords');
-  const inputNombre = document.getElementById('inputNombre');
-
-  btnIniciar.addEventListener('click', () => {
-    const nombre = inputNombre.value.trim(); 
-
-    if (!nombre) {
-      estado.className   = 'estado error';
-      estado.textContent = '⚠️ Ingresá tu nombre primero';
-      return;
+    if (nombreParam) {
+      inputNombre.value    = decodeURIComponent(nombreParam);
+      inputNombre.disabled = true;
     }
 
-    if (!navigator.geolocation) {
-      estado.className   = 'estado error';
-      estado.textContent = '❌ Tu dispositivo no tiene GPS';
-      return;
-    }
-
-    btnIniciar.style.display = 'none';
-    btnDetener.style.display = 'block';
-    inputNombre.disabled     = true;
-
-    estado.className = 'estado activo';
-    estado.innerHTML = '<span class="pulso"></span>Obteniendo ubicación...';
-
-    const enviarUbicacion = () => {
+    function enviarUbicacion() {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
 
-          // Enviamos con el ID del trabajador de la BD
           socket.emit('enviar-ubicacion', {
-            trabajadorId: trabajadorId,
-            nombre:       nombre,
+            trabajadorId,
+            nombre: inputNombre.value.trim(),
             lat,
             lng,
           });
 
-          estado.className = 'estado activo';
-          estado.innerHTML = `<span class="pulso"></span>Enviando ubicación en tiempo real`;
-          coords.innerHTML = `
-            <span>LAT</span> ${lat.toFixed(5)} &nbsp;
-            <span>LNG</span> ${lng.toFixed(5)}
-          `;
+          estadoEl.className = 'estado activo';
+          estadoEl.innerHTML = `<span class="pulso"></span>Enviando ubicación en tiempo real`;
+          coordsEl.innerHTML = `<span>LAT</span> ${lat.toFixed(5)} &nbsp; <span>LNG</span> ${lng.toFixed(5)}`;
         },
-
-        () => {
-          estado.className   = 'estado error';
-          estado.textContent = '❌ No se pudo obtener GPS. Verificá los permisos.';
+        (err) => {
+          estadoEl.className   = 'estado error';
+          estadoEl.textContent = '❌ Error GPS: ' + err.message;
         },
-        { enableHighAccuracy: true, timeout: 8000 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
       );
-    };
-
-    enviarUbicacion();
-    intervalGPS = setInterval(enviarUbicacion, 5000);
-});
-
-
-
-
-
-  // ── Registramos el Service Worker ────────────
-  async function registrarSW() {
-    if ('serviceWorker' in navigator) {
-      try {
-        const reg = await navigator.serviceWorker.register('/sw.js');
-        serviceWorker = reg;
-        console.log('✅ Service Worker registrado');
-
-        // Escuchamos mensajes del SW
-        navigator.serviceWorker.addEventListener('message', (event) => {
-          if (event.data.tipo === 'PEDIR_UBICACION' && rastreando) {
-            enviarUbicacion();
-           }
-        });
-      } catch (err) {
-        console.warn('SW no disponible:', err);
-        }
-       }
     }
 
-    // ── Wake Lock: evita que la pantalla se apague ──
     async function activarWakeLock() {
-        try {
-          if ('wakeLock' in navigator) {
-            wakeLock = await navigator.wakeLock.request('screen');
-            console.log('✅ Wake Lock activado');
-
-            // Si se pierde el wake lock (ej: batería baja), lo reactivamos
-            wakeLock.addEventListener('release', async () => {
-                if (rastreando) {
-                    try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
-                }
-            });
-          }
-        } catch (err) {
-          console.warn('Wake Lock no disponible:', err);
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
         }
+      } catch(e) {}
     }
 
-    // ── Envía la ubicación al servidor ───────────
-    function enviarUbicacion() {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-            const lat = pos.coords.latitude;
-            const lng = pos.coords.longitude;
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && rastreando) {
+        clearInterval(intervalGPS);
+        enviarUbicacion();
+        intervalGPS = setInterval(enviarUbicacion, 8000);
+      }
+    });
 
-            socket.emit('enviar-ubicacion', {
-        trabajadorId,
-        nombre: inputNombre.value.trim(),
-        lat,
-        lng,
-      });
+    socket.on('disconnect', () => {
+      if (rastreando) estadoEl.innerHTML = `<span class="pulso" style="background:#ffc832"></span>Reconectando...`;
+    });
+
+    socket.on('connect', () => {
+      if (rastreando) {
+        estadoEl.className = 'estado activo';
+        estadoEl.innerHTML = `<span class="pulso"></span>Reconectado ✅`;
+      }
+    });
+
+    btnIniciar.addEventListener('click', async () => {
+      const nombre = inputNombre.value.trim();
+      if (!nombre) {
+        estadoEl.className   = 'estado error';
+        estadoEl.textContent = '⚠️ Ingresá tu nombre';
+        return;
+      }
+      if (!navigator.geolocation) {
+        estadoEl.className   = 'estado error';
+        estadoEl.textContent = '❌ Tu dispositivo no tiene GPS';
+        return;
+      }
+
+      rastreando = true;
+      btnIniciar.style.display = 'none';
+      btnDetener.style.display = 'block';
+      inputNombre.disabled     = true;
 
       estadoEl.className = 'estado activo';
-      estadoEl.innerHTML = `<span class="pulso"></span>Enviando ubicación`;
-      coordsEl.innerHTML = `
-        <span>LAT</span> ${lat.toFixed(5)} &nbsp;
-        <span>LNG</span> ${lng.toFixed(5)}
-      `;
-    },
-    (err) => {
-      estadoEl.className   = 'estado error';
-      estadoEl.textContent = '❌ Error GPS: ' + err.message;
-    },
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
-  );
-}
+      estadoEl.innerHTML = '<span class="pulso"></span>Iniciando GPS...';
 
-// ── Detecta cuando la app va a segundo plano ──
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden && rastreando) {
-    // App en segundo plano — el SW toma el control
-    if (navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({
-        tipo:         'INICIAR_GPS',
-        trabajadorId,
-        nombre:       inputNombre.value.trim(),
-        serverUrl:    window.location.origin,
-      });
-    }
-  } else if (!document.hidden && rastreando) {
-    // App vuelve al frente — retomamos control
-    if (navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({ tipo: 'DETENER_GPS' });
-    }
-    // Reiniciamos el intervalo normal
-    clearInterval(intervalGPS);
-    enviarUbicacion();
-    intervalGPS = setInterval(enviarUbicacion, 8000);
-  }
-});
+      await activarWakeLock();
+      enviarUbicacion();
+      intervalGPS = setInterval(enviarUbicacion, 8000);
+    });
 
-// ── Reconexión automática de Socket.io ───────
-socket.on('disconnect', () => {
-  estadoEl.innerHTML = `<span class="pulso" style="background:#ffc832"></span>Reconectando...`;
-});
+    btnDetener.addEventListener('click', () => {
+      rastreando = false;
+      clearInterval(intervalGPS);
+      if (wakeLock) { wakeLock.release(); wakeLock = null; }
 
-socket.on('connect', () => {
-  if (rastreando) {
-    estadoEl.className = 'estado activo';
-    estadoEl.innerHTML = `<span class="pulso"></span>Reconectado ✅`;
-  }
-});
+      btnIniciar.style.display = 'block';
+      btnDetener.style.display = 'none';
+      inputNombre.disabled     = false;
 
-// ── Botón INICIAR ─────────────────────────────
-btnIniciar.addEventListener('click', async () => {
-  const nombre = inputNombre.value.trim();
-
-  if (!nombre) {
-    estadoEl.className   = 'estado error';
-    estadoEl.textContent = '⚠️ Ingresá tu nombre';
-    return;
-  }
-
-  if (!navigator.geolocation) {
-    estadoEl.className   = 'estado error';
-    estadoEl.textContent = '❌ Tu dispositivo no tiene GPS';
-    return;
-  }
-
-  rastreando = true;
-  btnIniciar.style.display = 'none';
-  btnDetener.style.display = 'block';
-  inputNombre.disabled     = true;
-
-  estadoEl.className = 'estado activo';
-  estadoEl.innerHTML = '<span class="pulso"></span>Iniciando GPS...';
-
-  // Activamos Wake Lock y Service Worker
-  await activarWakeLock();
-  await registrarSW();
-
-  // Enviamos inmediatamente
-  enviarUbicacion();
-
-  // Intervalo cada 8 segundos
-  intervalGPS = setInterval(enviarUbicacion, 8000);
-});
-
-// ── Botón DETENER ─────────────────────────────
-btnDetener.addEventListener('click', () => {
-  rastreando = false;
-  clearInterval(intervalGPS);
-
-  // Liberamos Wake Lock
-  if (wakeLock) { wakeLock.release(); wakeLock = null; }
-
-  // Detenemos el SW
-  if (navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage({ tipo: 'DETENER_GPS' });
-  }
-
-  btnIniciar.style.display = 'block';
-  btnDetener.style.display = 'none';
-  inputNombre.disabled     = false;
-
-  estadoEl.className   = 'estado';
-  estadoEl.textContent = 'Rastreo detenido';
-  coordsEl.textContent = '';
-});
-
-// ── Iniciamos el SW al cargar la página ──────
-registrarSW();
-</script>
-
+      estadoEl.className   = 'estado';
+      estadoEl.textContent = 'Rastreo detenido';
+      coordsEl.textContent = '';
+    });
+  </script>
 </body>
 </html>

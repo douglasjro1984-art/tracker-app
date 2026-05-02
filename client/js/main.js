@@ -235,6 +235,8 @@ document.getElementById('btnGuardar').addEventListener('click', async () => {
     alert('❌ Error al guardar');
   }
 });
+
+
 // ════════════════════════════════════════════
 //  LISTA DEL SIDEBAR
 // ════════════════════════════════════════════
@@ -328,14 +330,32 @@ async function cargarHistorial(trabajadorId) {
 //  SOCKET.IO — RECIBE UBICACIONES EN TIEMPO REAL
 // ════════════════════════════════════════════
 socket.on('actualizar-ubicacion', (datos) => {
-  const device = dispositivos.find(d => d.id === datos.trabajadorId);
+  const device = dispositivos.find(d => d.id == datos.trabajadorId);
   if (!device) return;
 
   device.actualizarPosicion(datos.lat, datos.lng);
-  device.estado = 'online';
+  device.estado    = 'online';
+  device.velocidad = 0.5;
 
   if (marcadores[device.id]) {
     marcadores[device.id].setLatLng([datos.lat, datos.lng]);
+    // Actualizamos el ícono para mostrar que está online
+    marcadores[device.id].setIcon(L.divIcon({
+      className: '',
+      html: `
+        <div style="
+          width:36px; height:36px;
+          border-radius:50%;
+          background:${device.color}22;
+          border:2.5px solid ${device.color};
+          display:flex; align-items:center;
+          justify-content:center;
+          font-size:16px;
+          box-shadow:0 0 14px ${device.color};
+        ">${device.emoji}</div>
+      `,
+      iconSize: [36,36], iconAnchor: [18,18],
+    }));
   }
 
   if (device.id === idSeleccionado) {
