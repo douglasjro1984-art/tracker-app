@@ -18,6 +18,7 @@ body {
   color: var(--texto);
   font-family: 'Courier New', monospace;
   height: 100vh;
+  max-height: 100vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -27,12 +28,13 @@ body {
 .navbar {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 0 20px;
+  gap: 12px;
+  padding: 0 16px;
   height: 50px;
   background: var(--panel);
   border-bottom: 1px solid var(--borde);
   flex-shrink: 0;
+  z-index: 100;
 }
 
 .navbar-brand {
@@ -73,11 +75,29 @@ body {
   letter-spacing: 0.1em;
 }
 
+/* ── Botón hamburguesa (oculto en desktop) ── */
+.btn-toggle-sidebar {
+  display: none;
+  background: var(--acento);
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 /* ── Layout principal ── */
 .app-container {
   display: flex;
   flex: 1;
+  height: calc(100vh - 50px);
   overflow: hidden;
+  position: relative;
 }
 
 /* ── Sidebar ── */
@@ -88,6 +108,8 @@ body {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .sidebar-header {
@@ -157,7 +179,6 @@ body {
   color: var(--muted);
 }
 .device-badge {
-  float: right;
   font-size: 0.55rem;
   padding: 2px 7px;
   border-radius: 20px;
@@ -167,6 +188,28 @@ body {
 .badge-online  { background: rgba(124,255,107,0.15); color: var(--verde); }
 .badge-offline { background: rgba(255,77,109,0.15);  color: var(--rojo);  }
 .badge-away    { background: rgba(255,200,50,0.15);  color: var(--amarillo); }
+
+.device-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+/* ── Botón eliminar ── */
+.btn-eliminar {
+  background: transparent;
+  border: 1px solid var(--rojo);
+  color: var(--rojo);
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-size: 0.65rem;
+  cursor: pointer;
+  margin-left: auto;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.btn-eliminar:hover { background: var(--rojo); color: white; }
 
 /* ── Footer stats ── */
 .sidebar-footer {
@@ -196,12 +239,13 @@ body {
   flex: 1;
   position: relative;
   overflow: hidden;
+  height: 100%;
 }
 
-#mapaCanvas {
+#mapa {
   width: 100%;
   height: 100%;
-  display: block;
+  z-index: 1;
 }
 
 /* ── Panel info ── */
@@ -209,12 +253,13 @@ body {
   position: absolute;
   top: 16px;
   left: 16px;
-  width: 220px;
+  width: 210px;
   background: rgba(13,21,38,0.93);
   border: 1px solid var(--borde);
   border-radius: 10px;
   padding: 14px;
   backdrop-filter: blur(10px);
+  z-index: 500;
 }
 .info-panel h3 {
   font-size: 0.9rem;
@@ -237,36 +282,37 @@ body {
 .info-row:last-child { border-bottom: none; }
 .info-row strong { color: var(--texto); }
 
-/* ── Zoom ── */
-.zoom-controls {
+/* ── Panel historial ── */
+.historial-panel {
   position: absolute;
-  bottom: 16px;
+  bottom: 70px;
   right: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.zoom-controls button {
-  width: 36px; height: 36px;
-  background: var(--panel);
+  width: 240px;
+  max-height: 220px;
+  overflow-y: auto;
+  background: rgba(13,21,38,0.95);
   border: 1px solid var(--borde);
-  color: var(--texto);
-  font-size: 1.2rem;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s;
+  border-radius: 10px;
+  padding: 12px;
+  z-index: 500;
 }
-.zoom-controls button:hover {
-  border-color: var(--acento);
-  color: var(--acento);
+.historial-panel h4 {
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 8px;
 }
-
-/* ── Mapa Leaflet ── */
-#mapa {
-  width: 100%;
-  height: 100%;
-  z-index: 1;
+.historial-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.6rem;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--borde);
+  color: var(--muted);
 }
+.historial-item:last-child { border-bottom: none; }
+.historial-item span { color: var(--texto); }
 
 /* ── Botón agregar ── */
 .btn-agregar {
@@ -284,10 +330,12 @@ body {
   font-weight: bold;
   font-size: 0.8rem;
   cursor: pointer;
-  letter-spacing: 0.05em;
   transition: all 0.2s;
 }
-.btn-agregar:hover { background: #00b8cc; transform: translateX(-50%) scale(1.04); }
+.btn-agregar:hover {
+  background: #00b8cc;
+  transform: translateX(-50%) scale(1.04);
+}
 
 /* ── Modal ── */
 .modal {
@@ -342,59 +390,59 @@ body {
   font-family: inherit; cursor: pointer;
 }
 
-/* ── Botón eliminar ── */
-.btn-eliminar {
-  background: transparent;
-  border: 1px solid var(--rojo);
-  color: var(--rojo);
-  border-radius: 6px;
-  padding: 2px 7px;
-  font-size: 0.65rem;
-  cursor: pointer;
-  margin-left: auto;
-  transition: all 0.15s;
-  font-family: inherit;
-}
-.btn-eliminar:hover {
-  background: var(--rojo);
-  color: white;
+/* ── Overlay móvil ── */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 997;
 }
 
-.device-top {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
-}
+/* ════════════════════════════════════════════
+   RESPONSIVE MÓVIL
+   ════════════════════════════════════════════ */
+@media (max-width: 768px) {
 
-/* ── Panel historial ── */
-.historial-panel {
-  position: absolute;
-  bottom: 70px;
-  right: 16px;
-  width: 240px;
-  max-height: 220px;
-  overflow-y: auto;
-  background: rgba(13,21,38,0.95);
-  border: 1px solid var(--borde);
-  border-radius: 10px;
-  padding: 12px;
-  z-index: 999;
+  .btn-toggle-sidebar {
+    display: flex;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: -290px;
+    height: 100vh;
+    z-index: 998;
+    transition: left 0.3s ease;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.6);
+  }
+
+  .sidebar.abierta {
+    left: 0;
+  }
+
+  .sidebar-overlay.visible {
+    display: block;
+  }
+
+  .map-container {
+    width: 100vw;
+    flex: 1;
+  }
+
+  .info-panel {
+    width: calc(100vw - 32px);
+    left: 16px;
+    top: 16px;
+  }
+
+  .historial-panel {
+    width: calc(100vw - 32px);
+    right: 16px;
+  }
+
+  .modal-box {
+    width: calc(100vw - 40px);
+  }
 }
-.historial-panel h4 {
-  font-size: 0.65rem;
-  letter-spacing: 0.15em;
-  color: var(--muted);
-  text-transform: uppercase;
-  margin-bottom: 8px;
-}
-.historial-item {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.6rem;
-  padding: 4px 0;
-  border-bottom: 1px solid var(--borde);
-  color: var(--muted);
-}
-.historial-item:last-child { border-bottom: none; }
-.historial-item span { color: var(--texto); }

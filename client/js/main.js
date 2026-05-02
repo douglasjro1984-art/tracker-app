@@ -1,209 +1,243 @@
 // ════════════════════════════════════════════
-//  MAIN.JS — App de rastreo con mapa real
+//  MAIN.JS — Conectado a MySQL via API REST
 // ════════════════════════════════════════════
 
-// ── Datos iniciales ──────────────────────────
-let datosIniciales = [
-  { id:1, nombre:'María García', emoji:'👩', rol:'Supervisora',  color:'#00e5ff', estado:'online',  bateria:82, velocidad:0.8, lat:19.432, lng:-99.133 },
-  { id:2, nombre:'Carlos López', emoji:'👨', rol:'Chofer',        color:'#ff4d6d', estado:'online',  bateria:47, velocidad:1.2, lat:19.441, lng:-99.121 },
-  { id:3, nombre:'Sofía Ruiz',   emoji:'👧', rol:'Técnica',       color:'#7cff6b', estado:'online',  bateria:93, velocidad:0.5, lat:19.428, lng:-99.148 },
-  { id:4, nombre:'Juan Méndez',  emoji:'🧑', rol:'Repartidor',    color:'#ffc832', estado:'away',    bateria:15, velocidad:0,   lat:19.445, lng:-99.140 },
-];
-
-// ── Socket.io: recibe ubicaciones en tiempo real ──
 const socket = io();
+let dispositivos   = [];
+let marcadores     = {};
+let idSeleccionado = null;
 
-// Cuando llega una nueva ubicación de un empleado
-socket.on('actualizar-ubicacion', (datos) => {
-  // Buscamos si ya existe ese dispositivo
-  let device = dispositivos.find(d => d.id === datos.id);
-
-  if (device) {
-    // Ya existe → actualizamos su posición
-    device.actualizarPosicion(datos.lat, datos.lng);
-    if (marcadores[device.id]) {
-      marcadores[device.id].setLatLng([datos.lat, datos.lng]);
-    }
-  } else {
-    // Es nuevo → lo agregamos al mapa
-    const nuevo = new Device({
-      id:        datos.id,
-      nombre:    datos.nombre,
-      emoji:     '📱',
-      rol:       'Empleado',
-      color:     '#00e5ff',
-      estado:    'online',
-      bateria:   100,
-      velocidad: 0,
-      lat:       datos.lat,
-      lng:       datos.lng,
-    });
-    dispositivos.push(nuevo);
-    agregarMarcador(nuevo);
-  }
-
-  renderizarLista();
-});
-
-// Cuando un empleado se desconecta
-socket.on('dispositivo-desconectado', (id) => {
-  const device = dispositivos.find(d => d.id === id);
-  if (device) {
-    device.estado = 'offline';
-    renderizarLista();
-  }
-});
-
-// ── Creamos objetos Device ────────────────────
-let dispositivos = datosIniciales.map(d => new Device(d));
-
-// ── Estado ────────────────────────────────────
-let idSeleccionado = 1;
-let contadorId     = 10; // para nuevos dispositivos
-let marcadores     = {}; // guarda los marcadores de Leaflet
-
-// ── Inicializamos el MAPA REAL (Leaflet) ─────
-// Iniciamos el mapa sin posición fija todavía
+// ── Mapa real ────────────────────────────────
 const mapa = L.map('mapa').setView([-26.82, -65.20], 13);
 
-// Pedimos la ubicación real al navegador
-if (navigator.geolocation) {
-  navigator.geolocation.watchPosition(
-    (pos) => {
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-
-      // Centramos el mapa en tu ubicación real
-      mapa.setView([lat, lng], 15);
-
-      // Marcador de "Yo estoy aquí"
-      if (!window.miUbicacion) {
-        window.miUbicacion = L.marker([lat, lng], {
-          icon: L.divIcon({
-            className: '',
-            html: `<div style="
-              width:20px; height:20px;
-              background:#00e5ff;
-              border-radius:50%;
-              border:3px solid white;
-              box-shadow: 0 0 12px #00e5ff;
-            "></div>`,
-            iconSize:   [20, 20],
-            iconAnchor: [10, 10],
-          })
-        }).addTo(mapa).bindTooltip('📍 Vos', { permanent: true, direction: 'top' });
-      } else {
-        window.miUbicacion.setLatLng([lat, lng]);
-      }
-    },
-    (error) => {
-      console.warn('No se pudo obtener ubicación:', error.message);
-    },
-    {
-      enableHighAccuracy: true,  // usa GPS si está disponible
-      maximumAge: 5000,          // acepta ubicación de hasta 5 seg atrás
-      timeout: 10000             // espera hasta 10 seg
-    }
-  );
-}
-// Capa de mapa oscuro (CartoDB Dark)
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
   attribution: '© OpenStreetMap © CARTO',
   maxZoom: 19
 }).addTo(mapa);
 
-// ── Función: crear ícono personalizado ────────
-function crearIcono(device) {
-  return L.divIcon({
-    className: '',
-    html: `
-      <div style="
-        width: 36px; height: 36px;
-        border-radius: 50%;
-        background: ${device.color}22;
-        border: 2.5px solid ${device.color};
-        display: flex; align-items: center;
-        justify-content: center;
-        font-size: 16px;
-        box-shadow: 0 0 10px ${device.color}66;
-      ">${device.emoji}</div>
-    `,
-    iconSize:   [36, 36],
-    iconAnchor: [18, 18],
-  });
+// ── Mi ubicación (punto azul) ─────────────────
+if (navigator.geolocation) {
+  navigator.geolocation.watchPosition(pos => {
+    const { latitude: lat, longitude: lng } = pos.coords;
+    mapa.setView([lat, lng], 15);
+    if (!window.miUbicacion) {
+      window.miUbicacion = L.marker([lat, lng], {
+        icon: L.divIcon({
+          className: '',
+          html: `<div style="width:16px;height:16px;background:#00e5ff;border-radius:50%;border:3px solid white;box-shadow:0 0 10px #00e5ff"></div>`,
+          iconSize: [16,16], iconAnchor: [8,8]
+        })
+      }).addTo(mapa).bindTooltip('📍 Vos', { permanent: true, direction: 'top' });
+    } else {
+      window.miUbicacion.setLatLng([lat, lng]);
+    }
+  }, null, { enableHighAccuracy: true });
 }
 
-// ── Función: agregar marcador al mapa ─────────
+// ════════════════════════════════════════════
+//  CARGAR TRABAJADORES DESDE LA BASE DE DATOS
+// ════════════════════════════════════════════
+async function cargarTrabajadores() {
+  try {
+    const res  = await fetch('/api/trabajadores');
+    const data = await res.json();
+
+    // Limpiamos marcadores viejos del mapa
+    Object.values(marcadores).forEach(m => mapa.removeLayer(m));
+    marcadores    = {};
+    dispositivos  = [];
+
+    data.forEach(t => {
+      // Creamos objeto Device con datos de la BD
+      const device = new Device({
+        id:        t.id,
+        nombre:    t.nombre,
+        emoji:     t.emoji,
+        rol:       t.rol,
+        color:     t.color,
+        estado:    t.estado,
+        bateria:   t.bateria || 100,
+        velocidad: t.estado === 'online' ? 0.5 : 0,
+        lat:       parseFloat(t.lat),
+        lng:       parseFloat(t.lng),
+      });
+      dispositivos.push(device);
+      agregarMarcador(device);
+    });
+
+    // Seleccionamos el primero por defecto
+    if (dispositivos.length > 0 && !idSeleccionado) {
+      idSeleccionado = dispositivos[0].id;
+      actualizarInfoPanel(dispositivos[0]);
+    }
+
+    renderizarLista();
+  } catch (err) {
+    console.error('Error cargando trabajadores:', err);
+  }
+}
+
+// ════════════════════════════════════════════
+//  MARCADORES EN EL MAPA
+// ════════════════════════════════════════════
 function agregarMarcador(device) {
   const marcador = L.marker([device.lat, device.lng], {
-    icon: crearIcono(device)
+    icon: L.divIcon({
+      className: '',
+      html: `
+        <div style="
+          width:36px; height:36px;
+          border-radius:50%;
+          background:${device.color}22;
+          border:2.5px solid ${device.color};
+          display:flex; align-items:center;
+          justify-content:center;
+          font-size:16px;
+          box-shadow:0 0 10px ${device.color}66;
+        ">${device.emoji}</div>
+      `,
+      iconSize: [36,36], iconAnchor: [18,18],
+    })
   }).addTo(mapa);
 
-  // Tooltip con el nombre
   marcador.bindTooltip(`<b>${device.nombre}</b><br>${device.rol}`, {
-    permanent: false,
-    direction: 'top',
-    className: 'tooltip-custom'
+    direction: 'top', className: 'tooltip-custom'
   });
 
-  // Al hacer clic en el marcador selecciona el dispositivo
   marcador.on('click', () => {
     idSeleccionado = device.id;
     actualizarInfoPanel(device);
     renderizarLista();
+    mapa.setView([device.lat, device.lng], 16, { animate: true });
   });
 
   marcadores[device.id] = marcador;
 }
 
-// ── Inicializamos marcadores ──────────────────
-dispositivos.forEach(d => agregarMarcador(d));
-
-// ── Reloj ─────────────────────────────────────
-setInterval(() => {
-  document.getElementById('reloj').textContent =
-    new Date().toLocaleTimeString();
-}, 1000);
-
-// ── Elimina un dispositivo ────────────────────
-function eliminarDispositivo(id) {
+// ════════════════════════════════════════════
+//  ELIMINAR TRABAJADOR
+// ════════════════════════════════════════════
+async function eliminarDispositivo(id) {
   const device = dispositivos.find(d => d.id === id);
   if (!device) return;
 
-  // Confirmación antes de borrar
   const confirmar = confirm(`¿Eliminar a ${device.nombre}?`);
   if (!confirmar) return;
 
-  // Quitamos el marcador del mapa
-  if (marcadores[id]) {
-    mapa.removeLayer(marcadores[id]);
-    delete marcadores[id];
-  }
+  try {
+    // Llamamos a la API para eliminarlo de la BD
+    await fetch(`/api/trabajadores/${id}`, { method: 'DELETE' });
 
-  // Quitamos el dispositivo de la lista
-  dispositivos = dispositivos.filter(d => d.id !== id);
-
-  // Si era el seleccionado, seleccionamos el primero que quede
-  if (idSeleccionado === id) {
-    if (dispositivos.length > 0) {
-      idSeleccionado = dispositivos[0].id;
-      actualizarInfoPanel(dispositivos[0]);
-    } else {
-      // No quedan dispositivos
-      document.getElementById('info-nombre').textContent = 'Sin dispositivos';
-      document.getElementById('info-rol').textContent    = '';
-      document.getElementById('info-lat').textContent    = '--';
-      document.getElementById('info-lng').textContent    = '--';
-      document.getElementById('info-vel').textContent    = '--';
-      document.getElementById('info-bat').textContent    = '--';
-      document.getElementById('info-estado').textContent = '--';
+    // Quitamos el marcador del mapa
+    if (marcadores[id]) {
+      mapa.removeLayer(marcadores[id]);
+      delete marcadores[id];
     }
-  }
 
-  renderizarLista();
+    // Quitamos de la lista local
+    dispositivos = dispositivos.filter(d => d.id !== id);
+
+    // Seleccionamos otro si quedaron
+    if (idSeleccionado === id) {
+      idSeleccionado = dispositivos.length > 0 ? dispositivos[0].id : null;
+      if (idSeleccionado) actualizarInfoPanel(dispositivos[0]);
+    }
+
+    renderizarLista();
+  } catch (err) {
+    console.error('Error eliminando:', err);
+  }
 }
 
-// ── Renderiza lista del sidebar ───────────────
+// ════════════════════════════════════════════
+//  AGREGAR TRABAJADOR
+// ════════════════════════════════════════════
+document.getElementById('btnAgregar').addEventListener('click', () => {
+  document.getElementById('modal').style.display = 'flex';
+});
+
+document.getElementById('btnCancelar').addEventListener('click', () => {
+  document.getElementById('modal').style.display = 'none';
+});
+
+document.getElementById('btnGuardar').addEventListener('click', async () => {
+  const nombre   = document.getElementById('form-nombre').value.trim();
+  const rol      = document.getElementById('form-rol').value.trim();
+  const telefono = document.getElementById('form-telefono').value.trim();
+  const estado   = document.getElementById('form-estado').value;
+
+  if (!nombre || !telefono) {
+    alert('⚠️ Completá el nombre y el teléfono');
+    return;
+  }
+
+  const colores = ['#ff6b6b','#ffd93d','#6bcb77','#4d96ff','#ff922b','#cc5de8'];
+  const emojis  = ['👤','🧑','👷','🚗','🏍️','📦'];
+  const idx     = dispositivos.length % colores.length;
+
+  try {
+    const res = await fetch('/api/trabajadores', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nombre,
+        emoji:  emojis[idx],
+        rol:    rol || 'Empleado',
+        color:  colores[idx],
+        estado: 'offline',
+        lat: 0, lng: 0,
+      })
+    });
+
+    const nuevo = await res.json();
+
+    // ── Obtenemos la URL pública del servidor ──
+    const configRes = await fetch('/api/config');
+    const config    = await configRes.json();
+    const baseUrl   = config.publicUrl;
+
+    // ── Generamos el link con la URL pública ──
+    const linkTracker = `${baseUrl}/tracker?id=${nuevo.id}&nombre=${encodeURIComponent(nombre)}`;
+
+    // ── Mensaje de WhatsApp ──
+    const mensaje = `Hola ${nombre} 👋\n\nTe invitamos a activar tu rastreo de ubicación para el trabajo.\n\nHacé clic en el siguiente link, aceptá el permiso de ubicación y listo:\n\n${linkTracker}\n\nSolo tomará unos segundos ✅`;
+
+    const whatsappUrl = `https://wa.me/${telefono}?text=${encodeURIComponent(mensaje)}`;
+
+    const device = new Device({
+      id:        nuevo.id,
+      nombre:    nuevo.nombre,
+      emoji:     nuevo.emoji,
+      rol:       nuevo.rol,
+      color:     nuevo.color,
+      estado:    'offline',
+      bateria:   100,
+      velocidad: 0,
+      lat:       -26.82,
+      lng:       -65.20,
+    });
+
+    dispositivos.push(device);
+    agregarMarcador(device);
+    idSeleccionado = device.id;
+    actualizarInfoPanel(device);
+    renderizarLista();
+
+    document.getElementById('modal').style.display  = 'none';
+    document.getElementById('form-nombre').value    = '';
+    document.getElementById('form-rol').value       = '';
+    document.getElementById('form-telefono').value  = '';
+
+    window.open(whatsappUrl, '_blank');
+
+  } catch (err) {
+    console.error('Error:', err);
+    alert('❌ Error al guardar');
+  }
+});
+// ════════════════════════════════════════════
+//  LISTA DEL SIDEBAR
+// ════════════════════════════════════════════
 function renderizarLista(filtro = '') {
   const lista = document.getElementById('listaDispositivos');
   lista.innerHTML = '';
@@ -224,19 +258,17 @@ function renderizarLista(filtro = '') {
         </div>
       `;
 
-      // Seleccionar dispositivo al hacer clic en la tarjeta
-      li.addEventListener('click', (e) => {
-        // Si hizo clic en el botón eliminar, no seleccionamos
+      li.addEventListener('click', e => {
         if (e.target.classList.contains('btn-eliminar')) return;
-
         idSeleccionado = device.id;
         actualizarInfoPanel(device);
         renderizarLista(filtro);
         mapa.setView([device.lat, device.lng], 15, { animate: true });
+        cargarHistorial(device.id);
+        cerrarSidebarMovil(); // ← esta línea
       });
 
-      // Botón eliminar
-      li.querySelector('.btn-eliminar').addEventListener('click', (e) => {
+      li.querySelector('.btn-eliminar').addEventListener('click', e => {
         e.stopPropagation();
         eliminarDispositivo(device.id);
       });
@@ -249,7 +281,9 @@ function renderizarLista(filtro = '') {
   document.getElementById('dispositivosOffline').textContent = dispositivos.filter(d => d.estado !== 'online').length;
 }
 
-// ── Actualiza panel info ──────────────────────
+// ════════════════════════════════════════════
+//  PANEL INFO Y HISTORIAL
+// ════════════════════════════════════════════
 function actualizarInfoPanel(device) {
   document.getElementById('info-nombre').textContent = `${device.emoji} ${device.nombre}`;
   document.getElementById('info-rol').textContent    = device.rol;
@@ -260,116 +294,98 @@ function actualizarInfoPanel(device) {
   document.getElementById('info-estado').textContent = device.obtenerEstadoTexto();
   document.getElementById('info-estado').style.color = device.obtenerColorEstado();
 }
-// ── Actualiza historial visual ──
-function actualizarHistorial(device) {
-  const lista = document.getElementById('historialLista');
-  lista.innerHTML = '';
 
-  // Tomamos las últimas 8 posiciones del historial
-  const ultimas = [...device.historial].reverse().slice(0, 8);
+async function cargarHistorial(trabajadorId) {
+  try {
+    const res  = await fetch(`/api/historial/${trabajadorId}`);
+    const data = await res.json();
+    const lista = document.getElementById('historialLista');
+    lista.innerHTML = '';
 
-  if (ultimas.length === 0) {
-    lista.innerHTML = '<div class="historial-item">Sin movimientos aún</div>';
-    return;
+    if (data.length === 0) {
+      lista.innerHTML = '<div class="historial-item">Sin movimientos aún</div>';
+      return;
+    }
+
+    data.slice(0, 8).forEach((pos, i) => {
+      const div = document.createElement('div');
+      div.className = 'historial-item';
+      const hora = new Date(pos.fecha).toLocaleTimeString();
+      div.innerHTML = `
+        <span>#${i + 1}</span>
+        <span>${parseFloat(pos.lat).toFixed(4)}°N</span>
+        <span>${Math.abs(parseFloat(pos.lng)).toFixed(4)}°W</span>
+        <span>${hora}</span>
+      `;
+      lista.appendChild(div);
+    });
+  } catch (err) {
+    console.error('Error cargando historial:', err);
+  }
+}
+
+// ════════════════════════════════════════════
+//  SOCKET.IO — RECIBE UBICACIONES EN TIEMPO REAL
+// ════════════════════════════════════════════
+socket.on('actualizar-ubicacion', (datos) => {
+  const device = dispositivos.find(d => d.id === datos.trabajadorId);
+  if (!device) return;
+
+  device.actualizarPosicion(datos.lat, datos.lng);
+  device.estado = 'online';
+
+  if (marcadores[device.id]) {
+    marcadores[device.id].setLatLng([datos.lat, datos.lng]);
   }
 
-  ultimas.forEach((pos, i) => {
-    const div = document.createElement('div');
-    div.className = 'historial-item';
-    div.innerHTML = `
-      <span>#${ultimas.length - i}</span>
-      <span>${pos.lat.toFixed(4)}° N</span>
-      <span>${Math.abs(pos.lng).toFixed(4)}° W</span>
-    `;
-    lista.appendChild(div);
-  });
-}
-// ── Buscador ──────────────────────────────────
+  if (device.id === idSeleccionado) {
+    actualizarInfoPanel(device);
+    cargarHistorial(device.id);
+  }
+
+  renderizarLista();
+});
+
+// ════════════════════════════════════════════
+//  BUSCADOR Y RELOJ
+// ════════════════════════════════════════════
 document.getElementById('buscador').addEventListener('input', e => {
   renderizarLista(e.target.value);
 });
 
-// ── Modal: agregar dispositivo ────────────────
-document.getElementById('btnAgregar').addEventListener('click', () => {
-  document.getElementById('modal').style.display = 'flex';
+setInterval(() => {
+  document.getElementById('reloj').textContent = new Date().toLocaleTimeString();
+}, 1000);
+
+// ════════════════════════════════════════════
+//  ARRANQUE — carga datos desde MySQL
+// ════════════════════════════════════════════
+cargarTrabajadores();
+
+
+// ════════════════════════════════════════════
+//  SIDEBAR TOGGLE — Móvil
+// ════════════════════════════════════════════
+const btnToggle      = document.getElementById('btnToggleSidebar');
+const sidebar        = document.querySelector('.sidebar');
+const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+btnToggle.addEventListener('click', () => {
+  const abierta = sidebar.classList.toggle('abierta');
+  sidebarOverlay.classList.toggle('visible', abierta);
+  btnToggle.textContent = abierta ? '✕' : '☰';
 });
 
-document.getElementById('btnCancelar').addEventListener('click', () => {
-  document.getElementById('modal').style.display = 'none';
+sidebarOverlay.addEventListener('click', () => {
+  sidebar.classList.remove('abierta');
+  sidebarOverlay.classList.remove('visible');
+  btnToggle.textContent = '☰';
 });
 
-document.getElementById('btnGuardar').addEventListener('click', () => {
-  const nombre = document.getElementById('form-nombre').value.trim();
-  const rol    = document.getElementById('form-rol').value.trim();
-  const lat    = parseFloat(document.getElementById('form-lat').value);
-  const lng    = parseFloat(document.getElementById('form-lng').value);
-  const estado = document.getElementById('form-estado').value;
-
-  // Validación básica
-  if (!nombre || isNaN(lat) || isNaN(lng)) {
-    alert('⚠️ Completá todos los campos correctamente');
-    return;
+function cerrarSidebarMovil() {
+  if (window.innerWidth <= 768) {
+    sidebar.classList.remove('abierta');
+    sidebarOverlay.classList.remove('visible');
+    btnToggle.textContent = '☰';
   }
-
-  // Colores disponibles para nuevos dispositivos
-  const colores = ['#ff6b6b','#ffd93d','#6bcb77','#4d96ff','#ff922b','#cc5de8'];
-  const emojis  = ['👤','🧑','👷','🚗','🏍️','📦'];
-
-  contadorId++;
-  const nuevoDispo = new Device({
-    id:        contadorId,
-    nombre:    nombre,
-    emoji:     emojis[contadorId % emojis.length],
-    rol:       rol || 'Empleado',
-    color:     colores[contadorId % colores.length],
-    estado:    estado,
-    bateria:   100,
-    velocidad: estado === 'online' ? 0.5 : 0,
-    lat:       lat,
-    lng:       lng,
-  });
-
-  dispositivos.push(nuevoDispo);
-  agregarMarcador(nuevoDispo);
-  renderizarLista();
-
-  // Cerramos el modal y limpiamos
-  document.getElementById('modal').style.display = 'none';
-  document.getElementById('form-nombre').value = '';
-  document.getElementById('form-rol').value    = '';
-  document.getElementById('form-lat').value    = '';
-  document.getElementById('form-lng').value    = '';
-
-  // Centramos el mapa en el nuevo dispositivo
-  mapa.setView([lat, lng], 15, { animate: true });
-  idSeleccionado = contadorId;
-  actualizarInfoPanel(nuevoDispo);
-});
-
-// ── Loop: actualiza posiciones en el mapa ─────
-function loop() {
-  dispositivos.forEach(device => {
-    device.simularMovimiento();
-
-    // Actualizamos la posición del marcador en el mapa real
-    if (marcadores[device.id]) {
-      marcadores[device.id].setLatLng([device.lat, device.lng]);
-    }
-  });
-
-  // Actualizamos el panel del dispositivo seleccionado
-  const sel = dispositivos.find(d => d.id === idSeleccionado);
-  if (sel) {
-  actualizarInfoPanel(sel);
-  actualizarHistorial(sel);
-};
-
-  renderizarLista(document.getElementById('buscador').value);
-
-  setTimeout(loop, 1000); // actualiza cada 1 segundo
 }
-
-// ── Arranque ──────────────────────────────────
-renderizarLista();
-actualizarInfoPanel(dispositivos[0]);
-loop();
